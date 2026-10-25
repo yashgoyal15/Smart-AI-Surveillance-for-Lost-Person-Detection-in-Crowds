@@ -1,0 +1,23 @@
+# Starts ONLY the database (PostgreSQL with the pgvector extension already installed).
+# The backend, AI service and frontend run directly on your computer, because the AI
+# service needs to reach your webcams and phones, which is awkward from inside Docker.
+#
+#   docker compose up -d      start the database
+#   docker compose down       stop it (data is kept)
+#   docker compose down -v    stop it AND delete all data
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: lpds-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lost_person_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - lpds-data:/var/lib/postgresql/data
+
+volumes:
+  lpds-data:

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+venv/
+__pycache__/
+.env
+backend/uploads/*/*
+!backend/uploads/*/.gitkeep
+ai_service/models/*
+!ai_service/models/.gitkeep
+ai_service/videos/*.mp4

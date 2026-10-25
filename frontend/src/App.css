@@ -1,0 +1,16 @@
+/* small extra tweaks that are easier to write in plain CSS than tailwind */
+
+.stagger-fade {
+  animation: fadeIn 0.25s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

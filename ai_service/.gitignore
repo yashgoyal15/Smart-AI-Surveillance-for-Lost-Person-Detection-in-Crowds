@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+.env
+*.pt
+videos/*.mp4
+insightface_home/
