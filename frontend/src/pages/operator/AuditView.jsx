@@ -10,7 +10,7 @@ export default function AuditView() {
   const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    getAlerts()
+    getAlerts({ limit: 500 })
       .then(setAlerts)
       .catch((err) => setErrorMsg(err.message))
       .finally(() => setLoading(false));
@@ -25,7 +25,7 @@ export default function AuditView() {
   }
 
   const filteredLog = alerts.filter((a) => {
-    const text = (a.personName + a.camId).toLowerCase();
+    const text = (a.personName + a.camId + a.method + a.status).toLowerCase();
     return text.includes(searchText.toLowerCase());
   });
 
@@ -58,6 +58,8 @@ export default function AuditView() {
           <tr className="text-left text-slate-400 border-b border-slate-800">
             <th className="py-2 font-medium">Person</th>
             <th className="py-2 font-medium">Camera</th>
+            <th className="py-2 font-medium">Result</th>
+            <th className="py-2 font-medium">How</th>
             <th className="py-2 font-medium">Confidence</th>
             <th className="py-2 font-medium">Time</th>
           </tr>
@@ -67,6 +69,10 @@ export default function AuditView() {
             <tr key={a.id} className="border-b border-slate-900">
               <td className="py-3">{a.personName}</td>
               <td className="py-3 text-slate-400">{a.camId}</td>
+              <td className={"py-3 " + (a.status === "POSSIBLE" ? "text-amber-400" : "text-emerald-400")}>
+                {a.status === "POSSIBLE" ? "Possible" : "Confirmed"}
+              </td>
+              <td className="py-3 text-slate-400">{a.method}</td>
               <td className="py-3">{formatPercent(a.confidence)}</td>
               <td className="py-3 text-slate-400">{formatTime(a.timestamp)}</td>
             </tr>

@@ -1,10 +1,12 @@
 """
-Run once to set up the database:   python init_db.py
+Run once to set up a NEW database:   python init_db.py
+
+(An older version-1 database should use  python migrate_v2.py  instead, which keeps its data.)
 
 1. turns on the pgvector extension
 2. creates every table from the models
-3. adds a vector index on persons.embedding
-4. adds the 4 cameras and two demo accounts
+3. adds the vector index on person_embeddings.embedding and a lookup index on alerts
+4. adds the first 4 cameras and two demo accounts
 """
 from sqlalchemy import text
 from app import create_app
@@ -21,13 +23,16 @@ with app.app_context():
 
     # approximate-nearest-neighbour index for cosine search (matters once thousands of faces exist)
     db.session.execute(text(
-        "CREATE INDEX IF NOT EXISTS persons_embedding_idx "
-        "ON persons USING hnsw (embedding vector_cosine_ops)"
+        "CREATE INDEX IF NOT EXISTS person_embeddings_hnsw_idx "
+        "ON person_embeddings USING hnsw (embedding vector_cosine_ops)"
+    ))
+    db.session.execute(text(
+        "CREATE INDEX IF NOT EXISTS alerts_person_cam_time_idx ON alerts (person_id, cam_id, timestamp DESC)"
     ))
     db.session.commit()
 
     if Camera.query.count() == 0:
-        # Team of 4 -> 4 cameras. Change "source" later from the dashboard (Camera Feeds -> Settings).
+        # Team of 4 -> 4 cameras. You can add more (up to MAX_CAMERAS) from the Camera Feeds page.
         db.session.add_all([
             Camera(cam_id="CAM-01", location="Main Entrance", source="0"),
             Camera(cam_id="CAM-02", location="Platform 1", source="1"),

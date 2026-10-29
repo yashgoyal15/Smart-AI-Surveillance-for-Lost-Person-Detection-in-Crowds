@@ -18,7 +18,7 @@ export default function LandingPage() {
     {
       icon: ScanFace,
       title: "Face Recognition Matching",
-      text: "ArcFace embeddings + FAISS similarity search identify a registered missing person within seconds.",
+      text: "ArcFace face vectors searched with pgvector in PostgreSQL, plus clothes, height and movement clues when the face is hidden, find a registered missing person within seconds.",
     },
     {
       icon: FileClock,

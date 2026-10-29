@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Users, CheckCircle2, Camera, Activity, Bell } from "lucide-react";
+import { Users, CheckCircle2, Camera, Activity, Bell, HelpCircle } from "lucide-react";
 import StatCard from "../../components/StatCard.jsx";
 import AlertRow from "../../components/AlertRow.jsx";
 import { getAlerts, getDashboardStats } from "../../services/alertService.js";
 import { getCameras } from "../../services/cameraService.js";
+import { listenToAlerts } from "../../services/alertStream.js";
 
-const POLL_MS = Number(import.meta.env.VITE_ALERT_POLL_INTERVAL) || 5000;
+// the server pushes new alerts, so this slow refresh is only a backup (camera status, etc.)
+const POLL_MS = Number(import.meta.env.VITE_ALERT_POLL_INTERVAL) || 10000;
 
 export default function DashboardHome() {
   const [stats, setStats] = useState(null);
@@ -32,8 +34,12 @@ export default function DashboardHome() {
     }
 
     loadDashboard();
-    const timer = setInterval(loadDashboard, POLL_MS); // keep the numbers fresh
-    return () => clearInterval(timer);
+    const timer = setInterval(loadDashboard, POLL_MS);
+    const stopListening = listenToAlerts(loadDashboard); // reload the moment a new alert arrives
+    return () => {
+      clearInterval(timer);
+      stopListening();
+    };
   }, []);
 
   if (errorMsg) return <p className="text-red-400 text-sm">{errorMsg}</p>;
@@ -42,13 +48,14 @@ export default function DashboardHome() {
   const statCards = [
     { label: "Registered Persons", value: stats.registeredPersons, icon: Users, color: "text-sky-400" },
     { label: "Matches (last 24 hours)", value: stats.matches24h, icon: CheckCircle2, color: "text-emerald-400" },
+    { label: "Possible (clothes only)", value: stats.possible24h, icon: HelpCircle, color: "text-amber-400" },
     { label: "Cameras Online", value: `${stats.camerasOnline}/${stats.camerasTotal}`, icon: Camera, color: "text-amber-400" },
     { label: "Avg. Match Confidence", value: `${stats.avgConfidence}%`, icon: Activity, color: "text-fuchsia-400" },
   ];
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {statCards.map((s) => (
           <StatCard key={s.label} {...s} />
         ))}
@@ -57,6 +64,7 @@ export default function DashboardHome() {
       <p className="text-xs text-slate-500 mt-3">
         A face counts as a match when its similarity is {Math.round(stats.threshold * 100)}% or higher.
         {stats.stillSearching > 0 && ` ${stats.stillSearching} person(s) not spotted yet.`}
+        {` ${stats.found} found, ${stats.closed} closed.`}
       </p>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">

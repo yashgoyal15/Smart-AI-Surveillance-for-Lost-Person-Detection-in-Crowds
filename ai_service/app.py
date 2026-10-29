@@ -1,7 +1,8 @@
 """
 AI service (port 5001). The Flask backend and the browser talk to this.
 
-  POST /embed                       backend -> photo in, ArcFace face vector out
+  POST /embed                       backend -> photo in, face vector + quality report out
+  GET  /metrics                     backend -> timings and counters (for the experiments chapter)
   POST /cameras/<id>/start          backend -> start reading that camera
   POST /cameras/<id>/stop           backend -> stop it
   GET  /cameras                     backend -> which cameras are running
@@ -17,6 +18,7 @@ import config
 import matcher
 from camera_worker import CameraWorker
 from pipeline import Pipeline
+from scheduler import Scheduler
 
 app = Flask(__name__)
 pipeline = Pipeline()
@@ -48,17 +50,28 @@ def embed():
     if image is None:
         return jsonify({"error": "This file is not a readable image"}), 422
 
-    embedding, error = pipeline.embed_reference_photo(image)
+    result, error = pipeline.embed_reference_photo(image)
     if error:
         return jsonify({"error": error}), 422
-    return jsonify({"embedding": embedding})
+    return jsonify(result)   # {embedding, quality, acceptable, reasons, faceWidth, parts}
+
+
+@app.route("/metrics")
+@internal_only
+def metrics():
+    data = pipeline.metrics.summary()
+    data["device"] = pipeline.device
+    data["cameras"] = {k: {"status": w.status, "tracks": len(w.tracker.tracks)} for k, w in workers.items()}
+    data["settings"] = {"maxFrameWidth": config.MAX_FRAME_WIDTH, "maxPeoplePerFrame": config.MAX_PEOPLE_PER_FRAME,
+                        "processInterval": config.PROCESS_INTERVAL, "inferenceBatch": config.INFERENCE_BATCH}
+    return jsonify(data)
 
 
 @app.route("/cameras")
 @internal_only
 def list_cameras():
     return jsonify([
-        {"id": k, "status": w.status, "error": w.error, "source": w.source} for k, w in workers.items()
+        {"id": k, "running": w.running, "status": w.status, "error": w.error, "source": w.source} for k, w in workers.items()
     ])
 
 
@@ -129,6 +142,7 @@ def stream(cam_id):
 
 
 if __name__ == "__main__":
+    Scheduler(pipeline, workers).start()
     if config.AUTO_START_CAMERAS:
         for cam in matcher.get_all_camera_ids():
             print(f"[AI] auto-starting {cam}: {start_camera(cam)[1]}")

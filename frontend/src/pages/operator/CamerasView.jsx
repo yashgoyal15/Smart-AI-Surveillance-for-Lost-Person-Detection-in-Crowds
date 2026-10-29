@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Camera, Play, Square, Settings } from "lucide-react";
-import { getCameras, startCamera, stopCamera, updateCamera } from "../../services/cameraService.js";
+import { Camera, Play, Square, Settings, Plus, Trash2 } from "lucide-react";
+import { getCameras, startCamera, stopCamera, updateCamera, createCamera, deleteCamera } from "../../services/cameraService.js";
 import { AI_URL, getToken } from "../../services/api.js";
 
 // ------------------------------------------------------------------
@@ -14,6 +14,9 @@ import { AI_URL, getToken } from "../../services/api.js";
 
 function CameraCard({ camera, onChange }) {
   const [source, setSource] = useState(camera.source);
+  // empty text means "use the global threshold" / "not calibrated"
+  const [threshold, setThreshold] = useState(camera.threshold ?? "");
+  const [calib, setCalib] = useState(camera.calibPxPerCm ?? "");
   const [showSettings, setShowSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -22,6 +25,13 @@ function CameraCard({ camera, onChange }) {
   const [streamKey, setStreamKey] = useState(0);
 
   const isOnline = camera.status === "online";
+  // "running" = the AI service has started this camera (even if it is still trying to connect)
+  const isRunning = camera.running;
+
+  // once the video is live, the "Connecting..." note is no longer true
+  useEffect(() => {
+    if (isOnline) setMessage("");
+  }, [isOnline]);
 
   async function handleStart() {
     setBusy(true);
@@ -52,10 +62,24 @@ function CameraCard({ camera, onChange }) {
     }
   }
 
+  async function handleRemove() {
+    if (!window.confirm(`Remove ${camera.id}?`)) return;
+    try {
+      await deleteCamera(camera.id);
+      onChange();
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   async function handleSaveSource() {
     try {
-      await updateCamera(camera.id, { source });
-      setMessage(isOnline ? "Saved. Stop and start the camera to use the new source." : "Saved.");
+      await updateCamera(camera.id, {
+        source,
+        threshold: threshold === "" ? null : Number(threshold),
+        calibPxPerCm: calib === "" ? null : Number(calib),
+      });
+      setMessage(isOnline ? "Saved. A new source needs Stop and Start; threshold and calibration apply within 10 seconds." : "Saved.");
       setShowSettings(false);
       onChange();
     } catch (err) {
@@ -82,7 +106,11 @@ function CameraCard({ camera, onChange }) {
           <div className="text-center">
             <Camera className="text-slate-700 mx-auto" size={36} />
             <p className="text-slate-600 text-xs mt-2">
-              {isOnline ? "Stream not available - press Stop, then Start" : "Camera is off"}
+              {isOnline
+                ? "Stream not available - press Stop, then Start"
+                : isRunning
+                ? "Connecting to the camera..."
+                : "Camera is off"}
             </p>
           </div>
         )}
@@ -108,7 +136,7 @@ function CameraCard({ camera, onChange }) {
             >
               <Settings size={14} />
             </button>
-            {isOnline ? (
+            {isRunning ? (
               <button
                 onClick={handleStop}
                 disabled={busy}
@@ -137,16 +165,52 @@ function CameraCard({ camera, onChange }) {
               className="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs outline-none focus:border-emerald-500"
               placeholder="0, videos/cam3.mp4, http://phone-ip:8080/video, rtsp://..."
             />
-            <button
-              onClick={handleSaveSource}
-              className="mt-2 px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600"
-            >
-              Save source
-            </button>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="text-xs text-slate-400">Match threshold (0.2 - 0.95)</label>
+                <input
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  type="number" step="0.01" min="0.2" max="0.95"
+                  placeholder="empty = global"
+                  className="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Pixels per cm (for height)</label>
+                <input
+                  value={calib}
+                  onChange={(e) => setCalib(e.target.value)}
+                  type="number" step="0.1" min="0.1" max="50"
+                  placeholder="empty = no height"
+                  className="w-full mt-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-xs outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Dark or low-quality cameras may need a lower threshold. Height is only measured when the camera is calibrated
+              (stand a person of known height in view and divide their height in pixels by their height in cm).
+            </p>
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleSaveSource} className="px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600">
+                Save settings
+              </button>
+              {!isRunning && (
+                <button onClick={handleRemove} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20">
+                  <Trash2 size={12} /> Remove camera
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {!showSettings && <div className="text-xs text-slate-500 mt-2 truncate">Source: {camera.source}</div>}
+        {!showSettings && (
+          <div className="text-xs text-slate-500 mt-2 truncate">
+            Source: {camera.source} - threshold: {camera.threshold ?? "global"}
+            {camera.calibPxPerCm ? ` - ${camera.calibPxPerCm} px/cm` : ""}
+          </div>
+        )}
+        {camera.error && <div className="text-xs text-red-400 mt-2">{camera.error}</div>}
         {message && <div className="text-xs text-amber-400 mt-2">{message}</div>}
       </div>
     </div>
@@ -172,14 +236,30 @@ export default function CamerasView() {
   // load once, then refresh every few seconds so Start/Stop is reflected
   useEffect(() => {
     loadCameras();
-    const timer = setInterval(loadCameras, 5000);
+    const timer = setInterval(loadCameras, 3000);
     return () => clearInterval(timer);
   }, []);
+
+  async function handleAdd() {
+    const location = window.prompt("Where is the new camera? (for example: Main Gate)");
+    if (!location) return;
+    const source = window.prompt("Video source (0, a video file, http://phone-ip:8080/video, rtsp://...)", "0");
+    if (!source) return;
+    try {
+      await createCamera(location, source);
+      loadCameras();
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  }
 
   if (loading) return <p className="text-slate-400 text-sm">Loading cameras...</p>;
 
   return (
     <div>
+      <button onClick={handleAdd} className="flex items-center gap-1 mb-4 px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700">
+        <Plus size={14} /> Add camera
+      </button>
       {errorMsg && <p className="text-red-400 text-sm mb-4">{errorMsg}</p>}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {cameras.map((c) => (

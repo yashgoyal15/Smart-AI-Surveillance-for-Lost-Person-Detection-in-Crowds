@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { MapPin, ArrowRight } from "lucide-react";
-import { getPersons, getTrail } from "../../services/personService.js";
+import { getPersons, getTrail, updateStatus } from "../../services/personService.js";
 import { getCameras } from "../../services/cameraService.js";
 import { fileUrl } from "../../services/api.js";
 import { formatTime } from "../../utils/format.js";
@@ -33,6 +33,19 @@ export default function TrackView() {
     }
   }
 
+  // the operator can close a report from here too (for example when the person was found at the gate)
+  async function handleStatus(status) {
+    const text = status === "FOUND" ? "Mark this person as found? Their face data will be deleted." : "Close this report? Their face data will be deleted.";
+    if (!window.confirm(text)) return;
+    try {
+      await updateStatus(selectedId, status);
+      setPersons(await getPersons());
+      setTrail(await getTrail(selectedId));
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  }
+
   function locationOf(camId) {
     const cam = cameras.find((c) => c.id === camId);
     return cam ? cam.location : "";
@@ -45,12 +58,13 @@ export default function TrackView() {
     for (let i = 0; i < sightings.length; i++) {
       const s = sightings[i];
       const last = stops[stops.length - 1];
-      if (last && last.camId === s.camId) {
+      const possible = s.status === "POSSIBLE";
+      if (last && last.camId === s.camId && last.possible === possible) {
         last.count = last.count + 1;
         last.to = s.timestamp;
-        last.snapshotUrl = s.snapshotUrl || last.snapshotUrl;
+        last.snapshotUrl = s.snapshotUrl || s.bodySnapshotUrl || last.snapshotUrl;
       } else {
-        stops.push({ camId: s.camId, from: s.timestamp, to: s.timestamp, count: 1, snapshotUrl: s.snapshotUrl });
+        stops.push({ camId: s.camId, from: s.timestamp, to: s.timestamp, count: 1, possible, snapshotUrl: s.snapshotUrl || s.bodySnapshotUrl });
       }
     }
     return stops;
@@ -77,7 +91,7 @@ export default function TrackView() {
               <div>
                 <div className="text-sm">{p.name}</div>
                 <div className="text-xs text-slate-400">
-                  {p.status === "MATCHED" ? "Spotted" : "Not spotted yet"}
+                  {{ MATCHED: "Spotted", SEARCHING: "Not spotted yet", FOUND: "Found", CLOSED: "Closed" }[p.status] || p.status}
                 </div>
               </div>
             </button>
@@ -96,7 +110,17 @@ export default function TrackView() {
         {trail && (
           <div>
             <h2 className="font-semibold">{trail.person.name}</h2>
-            <p className="text-xs text-slate-400 mb-4">Last reported at: {trail.person.lastSeen}</p>
+            <p className="text-xs text-slate-400 mb-3">Last reported at: {trail.person.lastSeen}</p>
+            {["SEARCHING", "MATCHED"].includes(trail.person.status) && (
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => handleStatus("FOUND")} className="px-3 py-1.5 rounded text-xs font-medium bg-emerald-500 text-slate-950 hover:bg-emerald-400">
+                  Mark as found
+                </button>
+                <button onClick={() => handleStatus("CLOSED")} className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700">
+                  Close report
+                </button>
+              </div>
+            )}
 
             {stops.length === 0 ? (
               <p className="text-slate-500 text-sm">This person has not been spotted by any camera yet.</p>
@@ -107,7 +131,9 @@ export default function TrackView() {
                   {stops.map((s, i) => (
                     <React.Fragment key={i}>
                       {i > 0 && <ArrowRight size={14} className="text-slate-500" />}
-                      <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-xs">{s.camId}</span>
+                      <span className={"px-2 py-1 rounded text-xs " + (s.possible ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400")}>
+                        {s.camId}{s.possible ? " ?" : ""}
+                      </span>
                     </React.Fragment>
                   ))}
                 </div>
@@ -122,12 +148,13 @@ export default function TrackView() {
                       )}
                       <div className="text-sm">
                         <div className="flex items-center gap-1 font-medium">
-                          <MapPin size={14} className="text-emerald-400" />
+                          <MapPin size={14} className={s.possible ? "text-amber-400" : "text-emerald-400"} />
                           {s.camId} {locationOf(s.camId) && `- ${locationOf(s.camId)}`}
                         </div>
                         <div className="text-xs text-slate-400 mt-1">
                           {formatTime(s.from)}
                           {s.count > 1 && ` to ${formatTime(s.to)}`} ({s.count} sighting{s.count > 1 ? "s" : ""})
+                          {s.possible && " - clothes only, not confirmed"}
                         </div>
                       </div>
                     </div>

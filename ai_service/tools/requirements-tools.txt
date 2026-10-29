@@ -1,0 +1,2 @@
+# extra packages only for the experiment scripts (pip install -r tools/requirements-tools.txt)
+matplotlib>=3.7

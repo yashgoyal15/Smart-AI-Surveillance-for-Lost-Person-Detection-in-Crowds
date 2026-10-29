@@ -17,7 +17,7 @@ const pageTitles = {
 
 export default function ReporterDashboard() {
   const [activeTab, setActiveTab] = useState("register");
-  // bumping this number forces MyReportsView to re-read the (mock) data
+  // bumping this number forces MyReportsView to re-read the reports from the server
   const [refreshKey, setRefreshKey] = useState(0);
   const [title, subtitle] = pageTitles[activeTab];
 
